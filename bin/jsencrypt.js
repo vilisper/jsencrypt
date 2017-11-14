@@ -4240,6 +4240,26 @@ JSEncrypt.prototype.setPublicKey = function (pubkey) {
   // Sets the public key.
   this.setKey(pubkey);
 };
+function byteCount(s) {
+  return encodeURI(s).split(/%(?:u[0-9A-F]{2})?[0-9A-F]{2}|./).length - 1;
+} 
+function eatBytes(s,num){
+  var pos=0;
+  var l=s.length;
+  var result=[];
+  while(num>=0 && pos<l){
+      var c=s[pos];
+      var len=byteCount(c);
+      if(num>=len){
+          result.push(c);
+          num-=len;
+          pos++;
+      }else{
+          break;
+      }
+  }
+  return {s:s.slice(pos),r:result.join("")};
+}
 
 /**
  * Proxy method for RSAKey object's decrypt, decrypt the string using the private
@@ -4249,13 +4269,32 @@ JSEncrypt.prototype.setPublicKey = function (pubkey) {
  * @return {string} the decrypted string
  * @public
  */
-JSEncrypt.prototype.decrypt = function (string) {
-  // Return the decrypted string.
+// JSEncrypt.prototype.decrypt = function (string) {
+//   // Return the decrypted string.
+//   try {
+//     return this.getKey().decrypt(b64tohex(string));
+//   }
+//   catch (ex) {
+//     return false;
+//   }
+// };
+JSEncrypt.prototype.decrypt = function(string) {
+  var k = this.getKey();
+  var maxLength = ((k.n.bitLength()+7)>>3) *2;
   try {
-    return this.getKey().decrypt(b64tohex(string));
-  }
-  catch (ex) {
-    return false;
+      var hexString = b64tohex(string);
+      var ct = "";
+      var pos=0;
+      var len=hexString.length;
+      var result=[];
+      while(pos<len){
+        var s=hexString.substr(pos,maxLength);
+        result.push(k.decrypt(s));
+        pos+=maxLength;
+      }
+      return result.join("");
+  } catch (ex) {
+      return false;
   }
 };
 
@@ -4267,12 +4306,29 @@ JSEncrypt.prototype.decrypt = function (string) {
  * @return {string} the encrypted string encoded in base64
  * @public
  */
-JSEncrypt.prototype.encrypt = function (string) {
-  // Return the encrypted string.
+// JSEncrypt.prototype.encrypt = function (string) {
+//   // Return the encrypted string.
+//   try {
+//     return hex2b64(this.getKey().encrypt(string));
+//   }
+//   catch (ex) {
+//     return false;
+//   }
+// };
+JSEncrypt.prototype.encrypt= function (string) {
+  var k = this.getKey();
+  var maxLength = (((k.n.bitLength() + 7) >> 3) - 11);
   try {
-    return hex2b64(this.getKey().encrypt(string));
-  }
-  catch (ex) {
+    var result = [];
+    while (string.length > 0) {
+      var o = eatBytes(string, maxLength);
+      string = o.s;
+      if (o.r) {
+        result.push(k.encrypt(o.r));
+      }
+    }
+    return hex2b64(result.join(""));
+  } catch (ex) {
     return false;
   }
 };
